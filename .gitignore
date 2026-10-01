@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------- secrets
+.env
+*.env
+
+# ------------------------------------------------------------- real people
+# Spreadsheets and client documents are blocked by extension rather than by
+# name, so a new export dropped into the folder is ignored by default instead
+# of being committed by accident. The repository is shared; once real staff
+# data is in history it cannot be taken back out.
+#
+# The pipeline reads teams.csv from SharePoint at runtime (_config/teams.csv).
+# It was never meant to be version controlled.
+*.csv
+*.docx
+*.xlsx
+phone_list.txt
+.zoom_directory.json
+client_docs/
+
+# Documentation is generated as a PDF and is meant to ship.
+*.pdf
+!docs/*.pdf
+
+# ------------------------------------------------------- tenant identifiers
+# Site and drive ids for the client's tenant. Rebuilt automatically on the
+# first run, so there is nothing to gain by committing it.
+.site.json
+
+# ------------------------------------------------------------ runtime state
+# Written while the pipeline runs. In production all of this lives in
+# STATE_DIR on the Azure Files share, never in the working copy.
+queue/
+*.log
+failures.log
+.backfill_progress.json
+.processed.json
+state.db
+
+# ------------------------------------------------------------------ local
+.venv/
+venv/
+__pycache__/
+*.pyc
+.~lock.*
+.DS_Store
+
+# One-off tool that built the first teams.csv from the client handout.
+# Its inputs (phone_list.txt, teams_TEMPLATE.csv) are ignored above, so it
+# cannot run from a clone, and it has real staff names hardcoded in it.
+# Kept on disk beside those inputs, deliberately not committed.
+build_team_map.py
+
+# ------------------------------------------------------------------ tests
+# The repository carries the production code only. The suites and their
+# synthetic fixtures stay on the development machine.
+test_*.py
+fixtures/

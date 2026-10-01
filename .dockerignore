@@ -1,0 +1,42 @@
+# Secrets never enter an image. Container Apps injects them as environment
+# variables at runtime instead -- an image is copied to a registry and can
+# be pulled by anyone with read access to it.
+.env
+*.env
+.env.*
+
+# Staff PII. teams.csv is served from SharePoint (TEAM_CSV_SOURCE=sharepoint)
+# so it does not need to ship, and an image is the wrong place for a list of
+# employees' names and emails.
+teams.csv
+teams_effective.csv
+teams_cached.csv
+teams_TEMPLATE.csv
+zoomus_users*.csv
+phone_list.txt
+*.pdf
+*.docx
+
+# Tests and their fixtures are not part of the running image.
+test_*.py
+teams_test.csv
+queue_teams_test.csv
+
+# Local-only
+.venv/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+fixtures/
+logs/
+queue/
+.site.json
+.zoom_directory.json
+.backfill_progress.json
+failures.log
+*.log
+
+# Archived probes and client source documents -- never needed at runtime
+archive/
+client_docs/

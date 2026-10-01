@@ -1,0 +1,25 @@
+# Pinned so the build in Azure installs exactly what the tests ran against.
+#
+# Version choice is constrained at BOTH ends: development here is on Ubuntu
+# 20.04's Python 3.8, while the platform build uses something newer. Every
+# pin below therefore supports 3.8 through 3.12, so the same file works in
+# both places and there is no "works locally" gap.
+#
+# Ubuntu's system packages are far older than these -- requests 2.22.0 dates
+# from 2019 -- so always work inside the virtualenv, never against system
+# site-packages:
+#
+#     python3 -m venv .venv
+#     .venv/bin/pip install -r requirements.txt
+#     .venv/bin/python test_pipeline.py
+
+# --- direct dependencies ------------------------------------------------
+requests==2.32.3          # Zoom and Microsoft Graph HTTP
+pytz==2024.2              # Australia/Melbourne, incl. AEST/AEDT transitions
+python-dotenv==1.0.1      # reads .env; in Azure the values are env vars
+
+# --- transitive, pinned for a reproducible build ------------------------
+certifi==2026.7.22
+charset-normalizer==3.5.2
+idna==3.15
+urllib3==2.2.3

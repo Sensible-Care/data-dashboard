@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zoom Phone Transcript Pipeline</title>
+<style>
+  @page { size: A4; margin: 1.7cm 1.8cm; }
+  body { font-family: "Liberation Serif", Georgia, serif; font-size: 10.5pt;
+         line-height: 1.38; color: #1a1a1a; }
+  h1 { font-family: "Liberation Sans", Arial, sans-serif; font-size: 23pt;
+       margin: 0 0 2pt 0; color: #10243e; }
+  h2 { font-family: "Liberation Sans", Arial, sans-serif; font-size: 13.5pt;
+       color: #10243e; margin: 14pt 0 5pt 0; padding-bottom: 3pt;
+       border-bottom: 1.2pt solid #c7d4e2; page-break-after: avoid; }
+  h3 { font-family: "Liberation Sans", Arial, sans-serif; font-size: 11pt;
+       color: #22425f; margin: 10pt 0 3pt 0; page-break-after: avoid; }
+  p, li { margin: 0 0 5pt 0; }
+  ul, ol { margin: 0 0 8pt 0; padding-left: 17pt; }
+  code, pre { font-family: "Liberation Mono", "Courier New", monospace;
+              font-size: 9pt; }
+  code { background: #eef2f6; padding: 0 2pt; }
+  pre { background: #f5f7f9; border-left: 2.5pt solid #9db4c9;
+        padding: 7pt 9pt; margin: 6pt 0 9pt 0; white-space: pre-wrap;
+        line-height: 1.32; }
+  table { border-collapse: collapse; width: 100%; margin: 5pt 0 8pt 0;
+          font-size: 9.3pt; page-break-inside: avoid; }
+  tr { page-break-inside: avoid; }
+  th { background: #10243e; color: #ffffff; text-align: left;
+       padding: 4.5pt 6pt; font-family: "Liberation Sans", Arial, sans-serif;
+       font-size: 9pt; }
+  td { border-bottom: 0.6pt solid #d4dde6; padding: 4pt 6pt;
+       vertical-align: top; }
+  .sub { font-family: "Liberation Sans", Arial, sans-serif; font-size: 10.5pt;
+         color: #51677d; margin: 0 0 3pt 0; }
+  .meta { font-family: "Liberation Sans", Arial, sans-serif; font-size: 8.6pt;
+          color: #6b7c8f; margin: 0 0 16pt 0; }
+  .note { background: #f3f8ec; border-left: 2.5pt solid #7ba23f;
+          padding: 7pt 9pt; margin: 8pt 0; }
+  .warn { background: #fdf4ec; border-left: 2.5pt solid #d98032;
+          padding: 7pt 9pt; margin: 8pt 0; }
+  .newpage { page-break-before: always; }
+  td.k { white-space: nowrap; font-family: "Liberation Mono", monospace;
+         font-size: 8.7pt; }
+</style>
+</head>
+<body>
+
+<h1>Zoom Phone Transcript Pipeline</h1>
+<p class="sub">Automated delivery of Zoom Phone call transcripts into SharePoint</p>
+<p class="meta">Sensible Care Pty Ltd</p>
+
+<h2>1. What this system does</h2>
+
+<p>Zoom Phone records and transcribes calls, but keeps those transcripts only
+inside Zoom, where they are awkward to search, impossible to retain under
+policy, and invisible to the rest of Microsoft 365. This pipeline copies every
+transcript into a SharePoint document library in Sensible Care's own tenant,
+filed by the team that took the call and the week it happened.</p>
+
+<p>Three things follow from that. Transcripts become searchable alongside
+everything else in SharePoint; Microsoft Purview retention labels can be
+applied to them like any other document; and no third party ever holds the
+data, because it moves directly from Zoom to Sensible Care's tenant.</p>
+
+<table width="100%" cellspacing="0">
+<tr><th style="width:27%">Property</th><th style="width:73%">Value</th></tr>
+<tr><td>Source</td><td>Zoom Phone recording transcripts, via the Zoom API</td></tr>
+<tr><td>Destination</td><td>SharePoint document library <em>Call Transcripts</em></td></tr>
+<tr><td>Filing</td><td><code>{Team}/{ISO year}-W{week}/</code></td></tr>
+<tr><td>Time zone</td><td>Australia/Melbourne &mdash; weeks are local, not UTC</td></tr>
+<tr><td>Format</td><td>Plain text (<code>.txt</code>) with a metadata header</td></tr>
+<tr><td>Volume</td><td>Roughly 640 transcripts per day</td></tr>
+<tr><td>History</td><td>Transcription was enabled around 21 July 2025; nothing exists before that</td></tr>
+<tr><td>Hosting</td><td>Azure Container Apps, region <code>australiaeast</code></td></tr>
+</table>
+
+<h2>2. The three moving parts</h2>
+
+<p>The same delivery logic runs in three different places. They differ only in
+what makes them start and which dates they cover.</p>
+
+<h3>The webhook &mdash; real time</h3>
+<p>An always-on web service. Zoom calls it the moment a transcript finishes
+processing, and the transcript is usually in SharePoint within seconds. This is
+the primary path; almost everything arrives this way.</p>
+
+<h3>The nightly job &mdash; the safety net</h3>
+<p>Runs once a day and re-checks the last two days. Anything the webhook missed
+&mdash; because Zoom's delivery failed, or the service was restarting &mdash; is
+picked up here. It then seals the previous week's manifests and reconciles what
+Zoom holds against what SharePoint holds.</p>
+
+<h3>The backfill job &mdash; history</h3>
+<p>Walks backwards through completed months, one calendar month per pass,
+delivering everything recorded before the pipeline existed. It is designed to be
+killed and restarted at any moment. When the historical archive is complete this
+job is switched off and never runs again.</p>
+
+<h2>3. How a transcript travels</h2>
+
+<ol>
+<li><strong>Zoom signals.</strong> A <code>phone.recording_transcript_completed</code>
+event is posted to the webhook, or a scheduled job queries
+<code>GET /v2/phone/recordings</code> for a date range.</li>
+<li><strong>The sender is verified.</strong> Webhook requests carry an
+HMAC-SHA256 signature over <code>v0:{timestamp}:{body}</code>. A bad signature,
+or a timestamp too far from now, is rejected as a possible replay.</li>
+<li><strong>The owner is resolved to a team.</strong> The recording names a Zoom
+user or a call queue. That is turned into an email address, and the email is
+looked up in the team map.</li>
+<li><strong>Prior delivery is checked.</strong> The destination week is listed in
+SharePoint. If this recording's id is already there, it is skipped.</li>
+<li><strong>The transcript is fetched and rendered.</strong> Zoom returns JSON;
+the pipeline converts it to readable text and prepends a metadata header.</li>
+<li><strong>It is uploaded</strong> to <code>{Team}/{ISO year}-W{week}/</code>,
+creating the folder if needed.</li>
+<li><strong>A manifest row is recorded</strong> for the weekly summary.</li>
+</ol>
+
+<div class="warn">
+<p><strong>Transcript text is never written to local disk.</strong> It is
+streamed from Zoom, rendered in memory, and sent to SharePoint. Nothing remains
+on the machine running the pipeline.</p>
+</div>
+
+<h2>4. Where files land</h2>
+
+<pre>Call Transcripts/
+  Care Partner Team/
+    2026-W39/
+      143301_inbound_+61400000000_to_200_d8d963272aa1.txt
+      _manifest_2026-W39_Care Partner Team.csv
+  Rostering/
+    2026-W39/
+  _Unassigned/
+    2026-W39/
+  _config/
+      teams.csv</pre>
+
+<p>Filenames are <code>HHMMSS_direction_caller_to_callee_shortid.txt</code>, in
+Melbourne local time. Leading with the time makes a folder sort chronologically,
+and the twelve-character recording id on the end makes collisions impossible.</p>
+
+<div class="note">
+<p><strong>Why ISO weeks and not months.</strong> The folder name pairs the ISO
+year with the ISO week, never the calendar year. 1 January 2027 falls in ISO week
+53 of 2026; writing <code>2027-W53</code> would create a folder that should not
+exist. The code enforces the pairing.</p>
+</div>
+
+<h2>5. Weekly manifests</h2>
+
+<p>Each team gets one CSV per week listing every transcript delivered: recording
+id, time, direction, duration, team, filename, and when it was uploaded.</p>
+
+<p>A manifest is written only once the week has closed and a grace period has
+passed, so that late arrivals are included. Once written it is never rewritten.
+Anything that arrives afterwards goes into a numbered supplement file beside it,
+containing only the genuinely new rows.</p>
+
+<h2>6. Azure infrastructure</h2>
+
+<table width="100%" cellspacing="0">
+<tr><th style="width:30%">Resource</th><th style="width:32%">Name</th><th style="width:38%">Purpose</th></tr>
+<tr><td>Resource group</td><td class="k">rg-zoom-transcripts</td><td>Holds everything</td></tr>
+<tr><td>Container Apps environment</td><td class="k">cae-zoom-transcripts</td><td>Shared network and logging</td></tr>
+<tr><td>Container app</td><td class="k">app-transcripts-webhook</td><td>Always-on webhook receiver</td></tr>
+<tr><td>Job (scheduled)</td><td class="k">job-transcripts-nightly</td><td>Daily safety net, seal, reconcile</td></tr>
+<tr><td>Job (scheduled)</td><td class="k">job-transcripts-backfill</td><td>Historical months</td></tr>
+<tr><td>Job (manual)</td><td class="k">job-transcripts-manual</td><td>Ad-hoc operator runs</td></tr>
+<tr><td>Container registry</td><td>Azure Container Registry</td><td>Stores the built image</td></tr>
+<tr><td>File share</td><td>Azure Files, mounted at <code>/data</code></td><td>State that must survive restarts</td></tr>
+<tr><td>Logs</td><td>Log Analytics</td><td>Console output from every run</td></tr>
+</table>
+
+<p>Containers are destroyed when they finish. Everything that must outlive a run
+is written to the Azure Files share, which persists independently of them.</p>
+
+<h2>7. Schedules</h2>
+
+<p>Azure runs cron in <strong>UTC and does not observe daylight saving</strong>.
+The UTC column is what is configured; the Melbourne column is the same instant
+expressed locally, and shifts when Melbourne changes clocks.</p>
+
+<table width="100%" cellspacing="0">
+<tr><th style="width:22%">Job</th><th style="width:30%">UTC</th><th style="width:48%">Melbourne</th></tr>
+<tr><td>Nightly</td><td>16:00 daily</td><td>02:00 next day (03:00 in daylight time)</td></tr>
+<tr><td>Backfill</td><td>11:00 daily, up to 22 h</td><td>21:00 (22:00 in daylight time)</td></tr>
+<tr><td>Webhook</td><td colspan="2">Always running; no schedule</td></tr>
+</table>
+
+</body>
+</html>
