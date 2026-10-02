@@ -11,9 +11,9 @@ import json
 import os
 import sys
 
-import config
-import state
-from graph_client import GraphClient, GraphError, make_auth
+from core import config
+from core import state
+from clients.graph_client import GraphClient, GraphError, make_auth
 
 CACHE = state.path(".site.json")
 

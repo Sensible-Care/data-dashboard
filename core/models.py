@@ -3,9 +3,9 @@ from datetime import datetime
 
 import pytz
 
-import config
-from team_map import UNMAPPED
-from drive_writer import sanitize
+from core import config
+from teams.team_map import UNMAPPED
+from clients.drive_writer import sanitize
 
 _TOKEN = re.compile(r"\{(\w+)\}")
 ZOOM_TS = "%Y-%m-%dT%H:%M:%SZ"

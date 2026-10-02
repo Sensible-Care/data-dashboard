@@ -12,8 +12,7 @@ import csv
 import io
 from datetime import date, timedelta
 
-import config
-
+from core import config
 COLUMNS = [
     "recording_id", "call_id", "call_element_id",
     "started_local", "started_utc", "iso_week", "team",

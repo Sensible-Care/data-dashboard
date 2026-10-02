@@ -3,9 +3,9 @@ import io
 import os
 import sys
 
-import config
-from drive_writer import DriveWriter, budget_path, sanitize
-from graph_client import GraphClient, GraphError, StaticTokenAuth
+from core import config
+from clients.drive_writer import DriveWriter, budget_path, sanitize
+from clients.graph_client import GraphClient, GraphError, StaticTokenAuth
 
 BASE = "_SmokeTest"
 passed = failed = 0

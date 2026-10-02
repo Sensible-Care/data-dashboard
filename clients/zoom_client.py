@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 
 import requests
 
-import config
-from models import PhoneRecording
+from core import config
+from core.models import PhoneRecording
 
 
 class ZoomError(Exception):

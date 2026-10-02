@@ -28,15 +28,15 @@ import argparse
 import sys
 from datetime import date, timedelta
 
-import config
-import manifest
-import pipeline
-import sharepoint_site
-import team_source
-import team_sync
-from drive_writer import DriveWriter
-from graph_client import GraphClient, GraphError, make_auth
-from team_map import UNMAPPED, TeamMap
+from core import config
+from core import manifest
+from jobs import pipeline
+from clients import sharepoint_site
+from teams import team_source
+from teams import team_sync
+from clients.drive_writer import DriveWriter
+from clients.graph_client import GraphClient, GraphError, make_auth
+from teams.team_map import UNMAPPED, TeamMap
 
 
 def week_bounds(iso_year, week):

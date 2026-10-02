@@ -3,9 +3,7 @@ import time
 
 import requests
 
-import config
-
-
+from core import config
 class GraphError(Exception):
     def __init__(self, status, code, message):
         super().__init__("{} {}: {}".format(status, code, message))
@@ -67,7 +65,7 @@ def make_auth():
     Nothing else in the pipeline needs to know which one it got, so switching
     from development to production is a matter of filling in .env.
     """
-    from zoom_client import _refuse_if_offline
+    from clients.zoom_client import _refuse_if_offline
     _refuse_if_offline("Microsoft Graph")
     if config.SP_TENANT_ID and config.SP_CLIENT_ID and config.SP_CLIENT_SECRET:
         return AppOnlyAuth(config.SP_TENANT_ID, config.SP_CLIENT_ID,

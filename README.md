@@ -9,7 +9,7 @@ text is streamed from Zoom to SharePoint and is never written to local disk.
 infrastructure it runs on. Operational procedures, configuration, rate limits
 and known limitations live in [`RUNBOOK.md`](RUNBOOK.md).
 
-## Layout
+## Where transcripts land
 
 ```
 Call Transcripts/{Team}/{ISO year}-W{week}/HHMMSS_direction_caller_to_callee_id.txt
@@ -31,36 +31,54 @@ All three deliver through the same `deliver()` function in `pipeline.py`. There
 is deliberately only one copy of "which folder, and has it already been
 delivered".
 
-## Files
+## Code layout
 
-| File | Purpose |
+```
+core/      config, state, models, transcript, manifest, alerts
+clients/   zoom_client, zoom_directory, graph_client, drive_writer, sharepoint_site
+teams/     team_map, team_source, team_sync
+jobs/      pipeline, backfill, seal, reconcile
+api/       webhook
+tools/     provision, verify, check_zoom
+docs/      generated documentation
+```
+
+Every entry point runs as a module from the repository root, so the root is the
+import path and no `sys.path` juggling is needed:
+
+```bash
+python3 -m jobs.pipeline
+python3 -m api.webhook
+```
+
+| Module | Purpose |
 |---|---|
-| `config.py` | Every setting, each an environment variable with a default |
-| `pipeline.py` | The main run and the shared `deliver()` |
-| `webhook.py` | Zoom webhook receiver — signature checks, queueing |
-| `backfill.py` | Historical months, restart-safe |
-| `seal.py` | Writes weekly manifests the daily window can never reach |
-| `reconcile.py` | Compares what Zoom holds against what SharePoint holds |
-| `zoom_client.py` | Zoom API, paging, throttle handling |
-| `graph_client.py` | Microsoft Graph auth and throttle handling |
-| `drive_writer.py` | SharePoint uploads, folders, listings |
-| `team_map.py` / `team_source.py` / `team_sync.py` | Who belongs to which team, and when |
-| `manifest.py` | Weekly CSV manifests and supplements |
-| `models.py` | Folder and filename rules, redaction |
-| `state.py` | Where persistent state lives (`STATE_DIR`) |
-| `alerts.py` | Email alerting |
+| `core/config.py` | Every setting, each an environment variable with a default |
+| `core/models.py` | Folder and filename rules, `PhoneRecording`, redaction |
+| `core/state.py` | Where persistent state lives (`STATE_DIR`) |
+| `core/manifest.py` | Weekly CSV manifests and supplements |
+| `core/alerts.py` | Email alerting |
+| `jobs/pipeline.py` | The main run and the shared `deliver()` |
+| `jobs/backfill.py` | Historical months, restart-safe |
+| `jobs/seal.py` | Writes weekly manifests the daily window can never reach |
+| `jobs/reconcile.py` | Compares what Zoom holds against what SharePoint holds |
+| `api/webhook.py` | Zoom webhook receiver — signature checks, queueing |
+| `clients/zoom_client.py` | Zoom API, paging, throttle handling |
+| `clients/graph_client.py` | Microsoft Graph auth and throttle handling |
+| `clients/drive_writer.py` | SharePoint uploads, folders, listings |
+| `teams/` | Who belongs to which team, and when |
 
 ## Running
 
 ```bash
 pip install -r requirements.txt
 
-python3 pipeline.py                            # last LOOKBACK_DAYS
-python3 pipeline.py --from 2026-09-01 --to 2026-09-30
-python3 pipeline.py --dry-run                  # plan only, writes nothing
-python3 seal.py                                # close out finished weeks
-python3 reconcile.py                           # Zoom vs SharePoint
-python3 backfill.py --status                   # months finished so far
+python3 -m jobs.pipeline                            # last LOOKBACK_DAYS
+python3 -m jobs.pipeline --from 2026-09-01 --to 2026-09-30
+python3 -m jobs.pipeline --dry-run                  # plan only, writes nothing
+python3 -m jobs.seal                                # close out finished weeks
+python3 -m jobs.reconcile                           # Zoom vs SharePoint
+python3 -m jobs.backfill --status                   # months finished so far
 ```
 
 Credentials come from a `.env` file, which is never committed. See the

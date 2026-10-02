@@ -53,5 +53,6 @@ build_team_map.py
 # ------------------------------------------------------------------ tests
 # The repository carries the production code only. The suites and their
 # synthetic fixtures stay on the development machine.
+tests/
 test_*.py
 fixtures/

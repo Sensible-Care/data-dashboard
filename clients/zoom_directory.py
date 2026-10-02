@@ -2,9 +2,8 @@ import json
 import os
 import time
 
-import config
-import state
-
+from core import config
+from core import state
 CACHE = (os.environ.get("DIRECTORY_CACHE")
          or state.path(".zoom_directory.json"))
 CACHE_TTL = 6 * 3600

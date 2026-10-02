@@ -2,8 +2,7 @@ import os
 
 from dotenv import load_dotenv
 
-import state
-
+from core import state
 load_dotenv()
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"

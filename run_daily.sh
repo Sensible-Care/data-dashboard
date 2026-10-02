@@ -34,7 +34,7 @@ log "=== ingest start ==="
 # tee, not a plain redirect: a container's log collector reads stdout,
     # so redirecting straight to a file makes every run look silent -- the
     # first deployment logged "ingest start" and nothing else at all.
-"$PYTHON" pipeline.py 2>&1 | tee -a "$LOG"
+"$PYTHON" -m jobs.pipeline 2>&1 | tee -a "$LOG"
 INGEST=${PIPESTATUS[0]}
 log "=== ingest finished, exit $INGEST ==="
 
@@ -47,7 +47,7 @@ log "=== manifest seal start ==="
 # tee, not a plain redirect: a container's log collector reads stdout,
     # so redirecting straight to a file makes every run look silent -- the
     # first deployment logged "ingest start" and nothing else at all.
-"$PYTHON" seal.py 2>&1 | tee -a "$LOG"
+"$PYTHON" -m jobs.seal 2>&1 | tee -a "$LOG"
 SEAL=${PIPESTATUS[0]}
 log "=== manifest seal finished, exit $SEAL ==="
 
@@ -55,7 +55,7 @@ log "=== reconciliation start ==="
 # tee, not a plain redirect: a container's log collector reads stdout,
     # so redirecting straight to a file makes every run look silent -- the
     # first deployment logged "ingest start" and nothing else at all.
-"$PYTHON" reconcile.py 2>&1 | tee -a "$LOG"
+"$PYTHON" -m jobs.reconcile 2>&1 | tee -a "$LOG"
 RECON=${PIPESTATUS[0]}
 log "=== reconciliation finished, exit $RECON ==="
 

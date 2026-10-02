@@ -12,8 +12,7 @@ from datetime import date, timedelta
 
 import requests
 
-import config
-
+from core import config
 OK, BAD, WARN = "\033[32mOK\033[0m", "\033[31mFAIL\033[0m", "\033[33mWARN\033[0m"
 
 

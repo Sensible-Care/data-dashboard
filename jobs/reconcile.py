@@ -18,17 +18,17 @@ import os
 import sys
 from datetime import date, datetime, timedelta
 
-import alerts
-import config
-import sharepoint_site
-import team_source
-import team_sync
-from drive_writer import DriveWriter
-from graph_client import GraphClient, make_auth
-from models import short_id, week_folders
-from team_map import TeamMap
-from zoom_client import FixtureTransport, ZoomClient
-from zoom_directory import ZoomDirectory
+from core import alerts
+from core import config
+from clients import sharepoint_site
+from teams import team_source
+from teams import team_sync
+from clients.drive_writer import DriveWriter
+from clients.graph_client import GraphClient, make_auth
+from core.models import short_id, week_folders
+from teams.team_map import TeamMap
+from clients.zoom_client import FixtureTransport, ZoomClient
+from clients.zoom_directory import ZoomDirectory
 
 
 def run(day, use_fixtures=False, send_alert=True, drive=None):

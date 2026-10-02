@@ -2,9 +2,9 @@
 # workload, so the nightly job, the weekly seal, the backfill and the
 # webhook all run from this same build:
 #
-#   ./run_daily.sh          ingest -> seal -> reconcile   (scheduled Job)
-#   python3 webhook.py      the receiver                  (Container App)
-#   python3 backfill.py …   one-off history               (manual Job)
+#   ./run_daily.sh              ingest -> seal -> reconcile   (scheduled Job)
+#   python3 -m api.webhook      the receiver                  (Container App)
+#   python3 -m jobs.backfill …  one-off history               (manual Job)
 #
 FROM python:3.12-slim
 
@@ -29,8 +29,16 @@ RUN command -v flock >/dev/null 2>&1 || ( \
         apt-get install -y --no-install-recommends util-linux && \
         rm -rf /var/lib/apt/lists/* )
 
-# Application code. teams.csv is deliberately absent -- see .dockerignore.
-COPY *.py ./
+# Application code, as packages. Every entry point is run with -m from /app
+# (python3 -m jobs.pipeline, python3 -m api.webhook), so /app is the import
+# root and no sys.path juggling is needed.
+# teams.csv is deliberately absent -- see .dockerignore.
+COPY core/ ./core/
+COPY clients/ ./clients/
+COPY teams/ ./teams/
+COPY jobs/ ./jobs/
+COPY api/ ./api/
+COPY tools/ ./tools/
 COPY queue_teams.csv ./
 COPY run_daily.sh ./
 RUN chmod +x run_daily.sh

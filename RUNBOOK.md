@@ -58,19 +58,19 @@ rotates logs at 30 days, and exits non-zero on failure.
 Manual run:
 
 ```bash
-python3 pipeline.py                      # last 2 days
-python3 pipeline.py --lookback 7         # last 7 days
-python3 pipeline.py --from 2026-09-01 --to 2026-09-07
-python3 pipeline.py --dry-run            # plan only, writes nothing
+python3 -m jobs.pipeline                      # last 2 days
+python3 -m jobs.pipeline --lookback 7         # last 7 days
+python3 -m jobs.pipeline --from 2026-09-01 --to 2026-09-07
+python3 -m jobs.pipeline --dry-run            # plan only, writes nothing
 ```
 
 Weekly manifests:
 
 ```bash
-python3 seal.py                          # the most recently sealed week
-python3 seal.py --weeks 6                # catch up on a backlog
-python3 seal.py --week 2026-W39          # one specific week
-python3 seal.py --dry-run                # say what it would do
+python3 -m jobs.seal                          # the most recently sealed week
+python3 -m jobs.seal --weeks 6                # catch up on a backlog
+python3 -m jobs.seal --week 2026-W39          # one specific week
+python3 -m jobs.seal --dry-run                # say what it would do
 ```
 
 Note `seal.py --dry-run` still **reads** SharePoint — it has to list the week
@@ -80,9 +80,9 @@ from `pipeline.py --dry-run`, which makes no network calls at all.
 Reconciliation:
 
 ```bash
-python3 reconcile.py                     # yesterday
-python3 reconcile.py --day 2026-09-20
-python3 reconcile.py --no-alert          # check without emailing
+python3 -m jobs.reconcile                     # yesterday
+python3 -m jobs.reconcile --day 2026-09-20
+python3 -m jobs.reconcile --no-alert          # check without emailing
 ```
 
 ### Why sealing is a separate pass
@@ -123,27 +123,27 @@ python3 -m venv .venv
 #    surprise reaches production.
 
 # 1. Confirm Zoom credentials still work
-python3 check_zoom.py
+python3 -m tools.check_zoom
 
 # 2. Create the SharePoint library and its columns
-python3 provision.py --dry-run
-python3 provision.py
+python3 -m tools.provision --dry-run
+python3 -m tools.provision
 
 # 3. Confirm the site resolves and cache the drive id
-python3 sharepoint_site.py
+python3 -m clients.sharepoint_site
 
 # 4. Build the team mapping from the client's phone handout
 pdftotext -layout "Phone Numbers & Emails.pdf" phone_list.txt
 python3 build_team_map.py
 
 # 5. Optional: hand teams.csv over to the client (see 4b)
-python3 team_source.py --push
+python3 -m teams.team_source --push
 
 # 6. Rehearse without writing
-python3 pipeline.py --lookback 1 --dry-run
+python3 -m jobs.pipeline --lookback 1 --dry-run
 
 # 7. Go
-python3 pipeline.py --lookback 1
+python3 -m jobs.pipeline --lookback 1
 ```
 
 ---
@@ -233,10 +233,10 @@ Call Transcripts/_config/teams.csv
 ```
 
 ```bash
-python3 team_source.py --show              # which source is in use
-python3 team_source.py --validate teams.csv
-python3 team_source.py --push              # upload the local file, once
-python3 team_source.py --pull              # fetch it now
+python3 -m teams.team_source --show              # which source is in use
+python3 -m teams.team_source --validate teams.csv
+python3 -m teams.team_source --push              # upload the local file, once
+python3 -m teams.team_source --pull              # fetch it now
 ```
 
 Each run downloads it, checks it, and caches it in `STATE_DIR`. Everything
@@ -267,7 +267,7 @@ A genuine large reduction is not a dead end. There is no cache file to
 delete inside a container, so:
 
 ```bash
-TEAM_CSV_MIN_FRACTION=0 python3 pipeline.py     # accept it for one run
+TEAM_CSV_MIN_FRACTION=0 python3 -m jobs.pipeline     # accept it for one run
 ```
 
 `teams.csv` is still never written to. `teams_effective.csv` remains the
@@ -281,9 +281,9 @@ One-off. Roughly 150,000 transcripts, 8–12 hours. **Run it on the client's
 infrastructure, never a laptop** — it moves production data.
 
 ```bash
-python3 backfill.py --from 2025-07 --to 2026-09 --dry-run
-python3 backfill.py --from 2025-07 --to 2026-09
-python3 backfill.py --status
+python3 -m jobs.backfill --from 2025-07 --to 2026-09 --dry-run
+python3 -m jobs.backfill --from 2025-07 --to 2026-09
+python3 -m jobs.backfill --status
 ```
 
 Safe to kill at any point. Progress is recorded per month in
@@ -366,8 +366,8 @@ casualties are the six list columns, and **nothing populates those today** —
 all per-call metadata lives in the filename and the per-week manifest CSV.
 
 To close the gap, ask the tenant admin to PATCH the grant to `fullcontrol`
-(see §9), then run `python3 provision.py`. Until then, use
-`python3 provision.py --skip-columns` to avoid six expected 403s.
+(see §9), then run `python3 -m tools.provision`. Until then, use
+`python3 -m tools.provision --skip-columns` to avoid six expected 403s.
 
 ---
 
@@ -377,10 +377,10 @@ Optional, and independent of the nightly job — if the webhook is down, the
 nightly run still collects everything. It only makes delivery faster.
 
 ```bash
-python3 webhook.py                  # serve on $PORT (default 8080)
-python3 webhook.py --self-test      # verify signing works, offline
-python3 webhook.py --status         # what is waiting
-python3 webhook.py --drain          # process the queue once and exit
+python3 -m api.webhook                  # serve on $PORT (default 8080)
+python3 -m api.webhook --self-test      # verify signing works, offline
+python3 -m api.webhook --status         # what is waiting
+python3 -m api.webhook --drain          # process the queue once and exit
 ```
 
 | Endpoint | |
@@ -466,7 +466,7 @@ POST /sites/{site-id}/permissions   role: fullcontrol
 ```
 
 **`no library named 'Call Transcripts'`**
-Run `python3 provision.py`.
+Run `python3 -m tools.provision`.
 
 **Everything lands in `_Unassigned`**
 `teams.csv` is missing or empty. Rebuild it with `build_team_map.py`.
@@ -531,7 +531,7 @@ a container the filesystem is discarded on every restart. `STATE_DIR` points
 them somewhere persistent:
 
 ```bash
-STATE_DIR=/data python3 pipeline.py
+STATE_DIR=/data python3 -m jobs.pipeline
 ```
 
 Unset — the default — every path is the bare filename it has always been, so

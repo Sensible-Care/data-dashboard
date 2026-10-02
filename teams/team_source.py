@@ -29,9 +29,8 @@ import io
 import os
 import sys
 
-import config
-import state
-
+from core import config
+from core import state
 CACHE = state.path("teams_cached.csv")
 REMOTE_NAME = "teams.csv"
 
@@ -178,7 +177,7 @@ def _fallback(problem, notify):
 
 def _alert(problem, using):
     try:
-        import alerts
+        from core import alerts
         alerts.send("Transcript pipeline: teams.csv was not updated",
                     "The team mapping in SharePoint could not be used.\n\n"
                     "  {}\n\n"
@@ -217,9 +216,9 @@ def push(drive, path=None):
 
 # -------------------------------------------------------------------- CLI
 def _drive():
-    import sharepoint_site
-    from drive_writer import DriveWriter
-    from graph_client import GraphClient, make_auth
+    from clients import sharepoint_site
+    from clients.drive_writer import DriveWriter
+    from clients.graph_client import GraphClient, make_auth
     client = GraphClient(make_auth())
     return DriveWriter(client, root=sharepoint_site.drive_root(client))
 

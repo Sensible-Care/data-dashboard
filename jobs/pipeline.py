@@ -6,20 +6,20 @@ from datetime import datetime, timedelta
 
 import pytz
 
-import alerts
-import config
-import manifest
-import sharepoint_site
-import state
-import team_source
-import team_sync
-import transcript as tfmt
-from drive_writer import DriveWriter
-from graph_client import GraphClient, GraphError, make_auth
-from models import filename_for, folder_for, redact, short_id, week_folders
-from team_map import UNMAPPED, TeamMap
-from zoom_client import FixtureTransport, ZoomClient, ZoomError
-from zoom_directory import ZoomDirectory
+from core import alerts
+from core import config
+from core import manifest
+from clients import sharepoint_site
+from core import state
+from teams import team_source
+from teams import team_sync
+from core import transcript as tfmt
+from clients.drive_writer import DriveWriter
+from clients.graph_client import GraphClient, GraphError, make_auth
+from core.models import filename_for, folder_for, redact, short_id, week_folders
+from teams.team_map import UNMAPPED, TeamMap
+from clients.zoom_client import FixtureTransport, ZoomClient, ZoomError
+from clients.zoom_directory import ZoomDirectory
 
 FAILURE_LOG = state.path("failures.log")
 

@@ -2,8 +2,7 @@ import csv
 import os
 from datetime import date, datetime
 
-import config
-
+from core import config
 UNMAPPED = "_Unassigned"
 
 

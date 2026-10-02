@@ -28,9 +28,8 @@ import sys
 import time
 from datetime import date, datetime, timedelta
 
-import pipeline
-import state
-
+from jobs import pipeline
+from core import state
 PROGRESS = state.path(".backfill_progress.json")
 
 

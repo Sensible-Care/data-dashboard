@@ -17,9 +17,9 @@ and every file inherits it with no pipeline code. See RUNBOOK.md.
 import argparse
 import sys
 
-import config
-import sharepoint_site
-from graph_client import GraphClient, GraphError, make_auth
+from core import config
+from clients import sharepoint_site
+from clients.graph_client import GraphClient, GraphError, make_auth
 
 # Mirrors the manifest columns, so the library is filterable in the browser
 # the same way the CSV is sortable in Excel.

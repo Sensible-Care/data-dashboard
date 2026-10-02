@@ -37,9 +37,8 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import config
-import state
-
+from core import config
+from core import state
 TRANSCRIPT_EVENT = "phone.recording_transcript_completed"
 VALIDATION_EVENT = "endpoint.url_validation"
 
@@ -149,15 +148,15 @@ def drain(zoom=None, drive=None, teams=None, directory=None, limit=None):
     Uses exactly the same deliver() the nightly pipeline uses, so there is
     one definition of which folder a transcript belongs in.
     """
-    import pipeline
-    import sharepoint_site
-    import team_sync
-    from drive_writer import DriveWriter
-    from graph_client import GraphClient, make_auth
-    from models import PhoneRecording
-    from team_map import TeamMap
-    from zoom_client import ZoomClient
-    from zoom_directory import ZoomDirectory
+    from jobs import pipeline
+    from clients import sharepoint_site
+    from teams import team_sync
+    from clients.drive_writer import DriveWriter
+    from clients.graph_client import GraphClient, make_auth
+    from core.models import PhoneRecording
+    from teams.team_map import TeamMap
+    from clients.zoom_client import ZoomClient
+    from clients.zoom_directory import ZoomDirectory
 
     pending = queued()
     if limit:

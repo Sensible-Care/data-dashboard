@@ -15,9 +15,7 @@ import re
 import smtplib
 from email.message import EmailMessage
 
-import config
-
-
+from core import config
 class AlertError(Exception):
     pass
 
@@ -64,7 +62,7 @@ def _send_graph(subject, body, addresses, graph_client):
     if graph_client is None:
         # Callers that only want to send an email should not have to know how
         # Graph authentication works. reconcile.py calls send() with no client.
-        from graph_client import GraphClient, make_auth
+        from clients.graph_client import GraphClient, make_auth
         graph_client = GraphClient(make_auth())
     sender = config.ALERT_FROM
     if not sender:

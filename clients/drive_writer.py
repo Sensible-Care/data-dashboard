@@ -1,8 +1,8 @@
 import re
 from urllib.parse import quote
 
-import config
-from graph_client import GraphClient, StaticTokenAuth
+from core import config
+from clients.graph_client import GraphClient, StaticTokenAuth
 
 INVALID_CHARS = re.compile(r'[":<>?/\\|*]')
 RESERVED = {
