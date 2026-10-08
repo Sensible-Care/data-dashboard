@@ -42,6 +42,12 @@ from core import state
 TRANSCRIPT_EVENT = "phone.recording_transcript_completed"
 VALIDATION_EVENT = "endpoint.url_validation"
 
+# Meetings. Zoom fires this when a cloud recording's audio transcript is
+# ready; the payload carries the meeting plus its recording_files, of which
+# exactly one is the transcript.
+MEETING_EVENT = "recording.transcript_completed"
+MEETING_TRANSCRIPT_TYPE = "TRANSCRIPT"
+
 QUEUE_DIR = state.path("queue")
 FAILED_DIR = os.path.join(QUEUE_DIR, "failed")
 
@@ -102,11 +108,15 @@ def _ensure_dirs():
             pass
 
 
-def enqueue(recording, event=None):
+def enqueue(recording, event=None, kind="phone", meeting=None):
     """Write one recording to the queue. Returns its path, or "" if invalid.
 
     Named after the recording id, so a retried event overwrites rather than
     queueing the same work twice.
+
+    `kind` says which pipeline drains it. It defaults to "phone" so entries
+    already sitting in the queue when this was deployed -- written before the
+    field existed -- are still delivered as calls.
     """
     recording_id = (recording or {}).get("id")
     if not recording_id:
@@ -118,6 +128,8 @@ def enqueue(recording, event=None):
     with open(tmp, "w") as fh:
         json.dump({"recording": recording,
                    "event": event or TRANSCRIPT_EVENT,
+                   "kind": kind,
+                   "meeting": meeting,
                    "queued_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                time.gmtime()),
                    "attempts": 0}, fh)
@@ -176,6 +188,8 @@ def drain(zoom=None, drive=None, teams=None, directory=None, limit=None):
         drive = DriveWriter(client, root=sharepoint_site.drive_root(client))
 
     known = {}                      # shared across the batch, saves listings
+    meeting_known = {}              # the same, for meeting day folders
+    meeting_zoom = [None]           # built only if a meeting event turns up
     delivered = skipped = failed = 0
 
     for path in pending:
@@ -187,15 +201,35 @@ def drain(zoom=None, drive=None, teams=None, directory=None, limit=None):
             failed += 1
             continue
 
-        rec = PhoneRecording.from_api(entry.get("recording") or {})
-        if not rec.transcript_download_url:
-            # Zoom said the transcript was ready but sent no URL. Not
-            # retryable; the nightly run will pick it up from the API.
-            _give_up(path, entry, "no transcript_download_url in the event")
-            failed += 1
-            continue
+        if entry.get("kind") == "meeting":
+            from jobs import meetings as mjob
+            from core.meeting import MeetingTranscript
+            from clients.zoom_meetings import MeetingsClient
 
-        outcome = pipeline.deliver(rec, zoom, drive, teams, directory, known)
+            rec = MeetingTranscript.from_api(entry.get("meeting") or {},
+                                             entry.get("recording") or {})
+            if not rec.download_url:
+                _give_up(path, entry, "no download_url on the transcript file")
+                failed += 1
+                continue
+            if meeting_zoom[0] is None:
+                meeting_zoom[0] = MeetingsClient()
+            # No rows passed: a webhook delivers one transcript as it happens,
+            # and the week's manifest is written later by the batch run once
+            # the week has closed. Writing a manifest per event would seal a
+            # week that is still open.
+            outcome = mjob.deliver(rec, meeting_zoom[0], drive, teams,
+                                   meeting_known)
+        else:
+            rec = PhoneRecording.from_api(entry.get("recording") or {})
+            if not rec.transcript_download_url:
+                # Zoom said the transcript was ready but sent no URL. Not
+                # retryable; the nightly run will pick it up from the API.
+                _give_up(path, entry, "no transcript_download_url in the event")
+                failed += 1
+                continue
+
+            outcome = pipeline.deliver(rec, zoom, drive, teams, directory, known)
         if outcome in ("uploaded", "skipped"):
             os.remove(path)
             delivered += outcome == "uploaded"
@@ -289,6 +323,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._reply(200, {
                 "plainToken": plain,
                 "encryptedToken": crc_token(self.secret, plain)})
+
+        if event == MEETING_EVENT:
+            # Same switch the nightly job uses. The client may subscribe to
+            # this event before they have approved the folder layout, and a
+            # retention label means anything written then could not be
+            # removed. Acknowledge with 200 so Zoom does not retry, and drop
+            # it: the batch run will collect the transcript once enabled.
+            if os.environ.get("RUN_MEETINGS", "1") != "1":
+                print("  meeting event ignored (RUN_MEETINGS=0)")
+                return self._reply(200, {"ignored": event,
+                                         "reason": "meetings disabled"})
+            obj = (payload.get("payload") or {}).get("object") or {}
+            files = [f for f in (obj.get("recording_files") or [])
+                     if (f.get("file_type") or "").upper() == MEETING_TRANSCRIPT_TYPE
+                     and f.get("download_url")]
+            accepted = [p for p in
+                        (enqueue(f, event, kind="meeting", meeting=obj)
+                         for f in files) if p]
+            print("  queued {} meeting transcript(s)".format(len(accepted)))
+            return self._reply(200, {"queued": len(accepted)})
 
         if event != TRANSCRIPT_EVENT:
             # 200, not an error: anything else is a subscription we did not

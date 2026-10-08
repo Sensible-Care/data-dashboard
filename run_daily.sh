@@ -59,6 +59,41 @@ log "=== reconciliation start ==="
 RECON=${PIPESTATUS[0]}
 log "=== reconciliation finished, exit $RECON ==="
 
+# Meetings and chat are behind switches because they went live before the
+# client had reviewed the folder layout, and anything written to the library
+# is covered by a two-year retention label -- it cannot be deleted if the
+# layout turns out to be wrong. The phone pipeline above is approved and
+# unaffected, which is why this is a per-stage switch and not the job's
+# schedule.
+#
+# Set RUN_MEETINGS=1 / RUN_CHAT=1 on the job to turn them back on. They
+# default to ON so a fresh deployment behaves normally; the "off" state
+# lives in the job's environment, not in this file, and so survives an
+# image update.
+MEETINGS=0
+CHAT=0
+
+if [ "${RUN_MEETINGS:-1}" = "1" ]; then
+    log "=== meeting transcripts start ==="
+    "$PYTHON" -m jobs.meetings 2>&1 | tee -a "$LOG"
+    MEETINGS=${PIPESTATUS[0]}
+    log "=== meeting transcripts finished, exit $MEETINGS ==="
+else
+    log "=== meeting transcripts SKIPPED (RUN_MEETINGS=0) ==="
+fi
+
+# Chat last. It is the longest stage -- one Zoom call per channel per day --
+# and the least urgent, so if the replica is ever cut short it is the one
+# that should lose, not the phone ingest.
+if [ "${RUN_CHAT:-1}" = "1" ]; then
+    log "=== team chat start ==="
+    "$PYTHON" -m jobs.chat 2>&1 | tee -a "$LOG"
+    CHAT=${PIPESTATUS[0]}
+    log "=== team chat finished, exit $CHAT ==="
+else
+    log "=== team chat SKIPPED (RUN_CHAT=0) ==="
+fi
+
 find "$LOG_DIR" -name 'run-*.log' -mtime +30 -delete 2>/dev/null
 
 # reconcile.py exits 1 when it finds a gap AND successfully emails about it.
@@ -80,5 +115,17 @@ fi
 if [ $SEAL -ne 0 ]; then
     log "MANIFEST SEAL FAILED (exit $SEAL) -- a week has no manifest"
     exit 1
+fi
+
+# Meetings and chat are reported but do NOT fail the run on their own. A
+# single unreachable channel exits non-zero, and letting that mark the whole
+# nightly job as failed would train everyone to ignore the alert that also
+# covers the phone pipeline. The log line is the record; the failures file
+# has the detail.
+if [ $MEETINGS -ne 0 ]; then
+    log "MEETINGS reported failures (exit $MEETINGS) -- see failures.log"
+fi
+if [ $CHAT -ne 0 ]; then
+    log "CHAT reported failures (exit $CHAT) -- see failures.log"
 fi
 log "OK"

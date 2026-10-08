@@ -13,11 +13,16 @@ teams_effective.csv
 teams_cached.csv
 teams_TEMPLATE.csv
 zoomus_users*.csv
+# The chat channel list carries channel owners' names and comes from
+# SharePoint at runtime, exactly as teams.csv does.
+chat_channels*.csv
+*chat-channels*.csv
 phone_list.txt
 *.pdf
 *.docx
 
 # Tests and their fixtures are not part of the running image.
+tests/
 test_*.py
 teams_test.csv
 queue_teams_test.csv

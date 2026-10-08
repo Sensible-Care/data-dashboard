@@ -2,9 +2,12 @@
 # workload, so the nightly job, the weekly seal, the backfill and the
 # webhook all run from this same build:
 #
-#   ./run_daily.sh              ingest -> seal -> reconcile   (scheduled Job)
+#   ./run_daily.sh              ingest -> seal -> reconcile ->
+#                               meetings -> chat              (scheduled Job)
 #   python3 -m api.webhook      the receiver                  (Container App)
-#   python3 -m jobs.backfill …  one-off history               (manual Job)
+#   python3 -m jobs.backfill …  one-off phone history         (manual Job)
+#   python3 -m jobs.meetings …  one-off meeting history       (manual Job)
+#   python3 -m jobs.chat …      one-off chat history          (manual Job)
 #
 FROM python:3.12-slim
 

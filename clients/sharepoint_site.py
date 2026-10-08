@@ -48,16 +48,41 @@ def resolve(client, library=None):
 
 
 def load_cache():
-    if os.path.exists(CACHE):
+    """The cached site/drive ids, or {} if there is nothing usable.
+
+    A damaged cache must NEVER be fatal. This file is read by every entry
+    point -- the nightly job, the webhook, every manual run -- so a
+    truncated or hand-edited copy used to raise JSONDecodeError and stop
+    all of them at startup. An empty dict instead means the caller resolves
+    the site again from the hostname in .env, costing one Graph call and
+    rewriting the cache correctly.
+    """
+    if not os.path.exists(CACHE):
+        return {}
+    try:
         with open(CACHE) as fh:
-            return json.load(fh)
-    return {}
+            cached = json.load(fh)
+    except (ValueError, OSError) as exc:
+        print("  .site.json is unreadable ({}) -- resolving the site again"
+              .format(exc))
+        return {}
+    return cached if isinstance(cached, dict) else {}
 
 
 def save_cache(site_id, drive_id, drive_root, library):
-    with open(CACHE, "w") as fh:
-        json.dump({"site_id": site_id, "drive_id": drive_id,
-                   "drive_root": drive_root, "library": library}, fh, indent=2)
+    """Write the cache atomically.
+
+    The plain open(..., "w") this replaced truncated the file before writing
+    it, so a crash or a full disk mid-write left a half-written cache that
+    every later run choked on. Writing a temp file and renaming it means the
+    cache is either the old value or the new one, never a fragment.
+    """
+    body = json.dumps({"site_id": site_id, "drive_id": drive_id,
+                       "drive_root": drive_root, "library": library}, indent=2)
+    tmp = CACHE + ".tmp"
+    with open(tmp, "w") as fh:
+        fh.write(body)
+    os.replace(tmp, CACHE)
 
 
 def cached_root():

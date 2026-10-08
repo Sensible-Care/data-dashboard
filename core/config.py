@@ -53,6 +53,54 @@ FOLDER_TEMPLATE = os.environ.get(
 # are therefore computed in local time, not UTC.
 TIMEZONE = os.environ.get("TIMEZONE", "Australia/Melbourne")
 
+# --- Meeting transcripts ------------------------------------------------
+
+# Meeting transcripts live beside the call transcripts in the same library,
+# under their own top-level folder, exactly as the client specified:
+#
+#     Meeting Transcripts/{team}/Meeting - 2026 - W35/
+#
+# Note the week folder is spelled out differently from the phone layout
+# ("Meeting - 2026 - W35" rather than "2026-W35"). That is the client's
+# wording, confirmed in writing, not an inconsistency to tidy up.
+MEETING_ROOT_FOLDER = os.environ.get("MEETING_ROOT_FOLDER", "Meeting Transcripts")
+MEETING_WEEK_TEMPLATE = os.environ.get(
+    "MEETING_WEEK_TEMPLATE", "Meeting - {iso_year} - W{week}")
+
+
+# Zoom refuses a date range wider than a month on the account recordings
+# endpoint, the same as the phone endpoint.
+MEETING_WINDOW_DAYS = int(os.environ.get("MEETING_WINDOW_DAYS", "30"))
+MEETING_PAGE_SIZE = int(os.environ.get("MEETING_PAGE_SIZE", "300"))
+
+# --- Team chat ----------------------------------------------------------
+
+# Chat follows the meeting layout exactly, one level per team and one per
+# ISO week, with the client's own wording for the week folder:
+#
+#     Chat Transcripts/{team}/Chat - 2026 - W41/
+#         <channel name>_<channel id>.txt
+#
+# One file per channel per week, not per day: the client asked for weekly
+# records, and a week of one channel is a few KB.
+CHAT_ROOT_FOLDER = os.environ.get("CHAT_ROOT_FOLDER", "Chat Transcripts")
+CHAT_WEEK_TEMPLATE = os.environ.get(
+    "CHAT_WEEK_TEMPLATE", "Chat - {iso_year} - W{week}")
+
+# Which channels to archive, and which team(s) each belongs to. Maintained
+# by the client in the same _config folder as teams.csv, so channels can be
+# added or removed without a redeploy.
+CHAT_CHANNEL_CSV = os.environ.get("CHAT_CHANNEL_CSV", "chat_channels.csv")
+
+# Zoom returns chat a day at a time, so a range is walked day by day.
+CHAT_PAGE_SIZE = int(os.environ.get("CHAT_PAGE_SIZE", "50"))
+
+# Chat is mutable in a way a transcript is not: a week's file is rewritten
+# while the week is still open, then left alone once MANIFEST_SEAL_DAYS have
+# passed. Re-running a sealed week costs nothing -- it is skipped before any
+# message is fetched.
+CHAT_LOOKBACK_DAYS = int(os.environ.get("CHAT_LOOKBACK_DAYS", "14"))
+
 STATE_DB = os.environ.get("STATE_DB", "state.db")
 
 # A single folder segment (a site or owner name) must not eat the path budget.
