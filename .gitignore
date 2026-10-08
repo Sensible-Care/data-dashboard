@@ -56,3 +56,7 @@ build_team_map.py
 tests/
 test_*.py
 fixtures/
+
+# The PDF is the deliverable; its HTML source stays local so the PDF
+# can be regenerated, but does not belong in the repo.
+docs/*.html

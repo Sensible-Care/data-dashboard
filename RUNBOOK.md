@@ -1,6 +1,8 @@
-# Runbook — Zoom Phone Transcripts → SharePoint
+# Runbook — Zoom Transcripts → SharePoint
 
-Operational guide for the nightly transcript pipeline.
+Operational guide for the nightly pipeline, which delivers three kinds of
+record: **Zoom Phone** call transcripts, **Zoom meeting** transcripts and
+**Zoom Team Chat** conversations.
 Client: Sensible Care Pty Ltd. Timezone for every date below: **Australia/Melbourne**.
 
 ---
@@ -16,8 +18,19 @@ At 02:00 Melbourne each night, the pipeline:
 5. Files it as `<Team>/<ISO year>-W<week>/<time>_<direction>_<from>_to_<to>_<id>.txt`.
 6. Once a week has been closed for 3 days, writes a manifest CSV into each week folder.
 
+Then, in the same run and in this order:
+
+7. **Meeting transcripts** — cloud recordings from the last `LOOKBACK_DAYS`,
+   keeping only the TRANSCRIPT file and filing it under the host's team.
+8. **Team Chat** — the last `CHAT_LOOKBACK_DAYS`, one file per channel per
+   week, under every team the channel is mapped to.
+
+Chat runs last on purpose: it is the longest stage (one Zoom call per channel
+per day) and the least urgent, so a replica cut short loses chat rather than
+the phone ingest. Both stages can be switched off independently — see §2b.
+
 A separate reconciliation job compares what Zoom has against what SharePoint has
-and emails on any gap.
+and emails on any gap. It covers phone only.
 
 **There is no database.** SharePoint is the ledger. Each filename ends with the
 first 12 characters of the Zoom recording id, and the pipeline skips anything
@@ -41,6 +54,103 @@ Call Transcripts/                     <- document library
 
 `_Unassigned` is not an error state. It is where calls go when the person is not
 in `teams.csv`. Check it weekly; if it is filling up, the mapping needs updating.
+
+Meetings and chat sit in their own top-level folders in the same library:
+
+```
+Meeting Transcripts/
+├── Care Partner Team/
+│   └── Meeting - 2026 - W41/
+│       ├── 092316_Care Management Workshop_care_122c0b64.txt
+│       └── _manifest_2026-W41_Care Partner Team.csv
+
+Chat Transcripts/
+├── Accounts Team/
+│   └── Chat - 2026 - W41/
+│       ├── CMs + ACCOUNTS_85e2d6be48fb.txt
+│       └── _manifest_2026-W41_Accounts Team.csv
+```
+
+Note the week folder is worded differently from the phone layout
+("Meeting - 2026 - W41", not "2026-W41"). That is the client's wording,
+confirmed in writing. Do not "tidy" it.
+
+---
+
+## 2a. What is different about meetings and chat
+
+**Meetings.** One file per transcript. A meeting has many participants spread
+across teams, so there has to be one rule: the team is the **host's**, because
+the host is the only party Zoom guarantees to name. A meeting recorded in parts
+produces more than one transcript file, and each is delivered separately — the
+id in the filename is the *file's* id, not the meeting's.
+
+Not every meeting has a transcript. Of 415 recordings in the account, 275 had
+one; the rest have audio and video but Zoom never transcribed them, and none of
+them has a caption file either. There is nothing to collect for those.
+
+**Chat.** One file per channel per ISO week, with threaded replies printed
+underneath the message they answer rather than in raw arrival order. Two things
+behave unlike anything else in the pipeline:
+
+1. **A channel can belong to two teams**, and the client asked for the record
+   to appear under both. So chat dedupes **per folder** — each (channel, week,
+   team) is decided on its own. The phone and meeting rule ("delivered to *any*
+   candidate folder means delivered") would write the first folder, find the id,
+   and silently skip the second. 13 of the 54 selected channels are dual-team.
+
+2. **A chat week is mutable.** Messages keep arriving until the week ends, so
+   the file is rewritten on each run while the week is open, then frozen once
+   `MANIFEST_SEAL_DAYS` have passed. A sealed week already present in every team
+   folder is skipped *before any Zoom call is made*.
+
+Ad-hoc group conversations (Zoom channel `type: 4`) are **never** archived.
+Those are personal chats named after their participants; the client's selection
+contains none, and `clients/zoom_chat.py` refuses them even if one is listed.
+
+### Channel resolution is per-user, and that matters
+
+There is no account-wide "list every channel" endpoint. Channels are listed per
+user, and only the channels that user belongs to. The app's own account can see
+82 of this tenant's ~640 channels, and only 5 of the 54 the client selected — so
+the only way to reach them all is to walk every active user and union the
+results, then read messages as a user who is a member of the channel.
+
+Consequence worth knowing: **if a channel's only remaining members are all
+deactivated Zoom users, that channel becomes unreachable.** Nothing is lost
+that was already delivered, but no new messages can be collected from it.
+
+---
+
+## 2b. Switching meetings and chat off
+
+Both stages are behind environment switches on the job, defaulting to **on**:
+
+```bash
+# stop delivery without touching the schedule
+az containerapp job update -g rg-zoom-transcripts -n job-transcripts-nightly \
+  --set-env-vars RUN_MEETINGS=0 RUN_CHAT=0
+
+# the webhook has the same switch, so a Zoom event cannot write either
+az containerapp update -g rg-zoom-transcripts -n app-transcripts-webhook \
+  --set-env-vars RUN_MEETINGS=0
+
+# back on
+... --set-env-vars RUN_MEETINGS=1 RUN_CHAT=1
+```
+
+**Do not disable the job's schedule to stop meetings or chat.** All five stages
+share one job, so that would also stop the phone pipeline, the manifest seal and
+reconciliation.
+
+Why this exists: everything written to the library is covered by a two-year
+retention label and **cannot be deleted**. If a layout or rendering problem is
+found, the only useful response is to stop writing immediately, and that must
+not require a redeploy.
+
+With `RUN_MEETINGS=0` the webhook still answers Zoom with 200 and simply drops
+the event — a non-2xx would make Zoom retry it three times. The transcript is
+picked up by the batch run once the switch is back on.
 
 ---
 
@@ -275,6 +385,55 @@ derived file, exactly as in §4a.
 
 ---
 
+## 4c. Where the chat channel list lives
+
+`_config/chat_channels.csv` in the same library, maintained by the client
+exactly as `teams.csv` is. It is their own spreadsheet, unchanged:
+
+```
+Channel name,Channel owner,Members,Which Team(s)
+CMs + ACCOUNTS,A. Example,40,Care Partner + Accounts
+```
+
+```bash
+python3 -m teams.channel_source --show                  # what is cached
+python3 -m teams.channel_source --validate <file>       # check, no network
+python3 -m teams.channel_source --pull                  # fetch now
+python3 -m teams.channel_source --push <file>           # upload (first time)
+```
+
+Adding or removing a channel is a row edit; no redeploy, no restart. The next
+nightly run picks it up.
+
+### Team names are normalised, not matched literally
+
+The client's file uses 18 spellings for 12 teams — "Accounts" and "Accounts
+Team", "Care Partner", "Care Partners" and "Care Partner Team", "Nursing Team"
+for Nursing, plus one typo ("Care Coorcinators"). `teams/channel_map.py` holds
+the alias table and resolves each against the staff list, preferring an exact
+match so a team the client adds later works without an alias being added here
+first.
+
+A name that still does not resolve is **reported and filed under
+`_Unassigned`** rather than stopping the run — a new team should still get its
+chat archived somewhere findable.
+
+A channel listed twice keeps the **first** row and warns. Taking the later row
+would quietly change which teams it is delivered to.
+
+### Why it is checked as carefully as teams.csv
+
+This file decides *which channels are archived at all*. A truncated or
+half-saved upload does not crash anything — it silently stops archiving the
+channels that fell off the end, and nobody notices until someone goes looking
+for a record that was never written.
+
+So a download that loses more than half the channels is **refused** and the
+previous good copy stays in force, with an alert. Override for one run with
+`CHAT_CSV_MIN_FRACTION=0` if the reduction is genuine.
+
+---
+
 ## 5. Historical backfill
 
 One-off. Roughly 150,000 transcripts, 8–12 hours. **Run it on the client's
@@ -295,6 +454,49 @@ earlier months only burn API calls.
 
 Zoom retention is a **rolling ~630 days**, so the oldest month available moves
 forward continuously. Anything not backfilled is eventually lost for good.
+
+### 5a. Meeting and chat backfill
+
+Both are complete as of 8 October 2026. Recorded here because the shape of the
+job is not obvious and the numbers are the baseline for spotting a problem.
+
+```bash
+python3 -m jobs.meetings --from 2025-01-01 --to 2026-10-08    # ~7 min
+python3 -m jobs.chat     --from 2025-08-01 --to 2025-10-31    # ~36 min per quarter
+```
+
+| | Delivered | Range | Runtime |
+|---|---|---|---|
+| Meetings | 277 files, 118 manifests | 2025-W20 → 2026-W41 | 7 min |
+| Chat | 1,394 files, 513 manifests | 2025-W06 → 2026-W41 | ~3 h |
+
+**Run chat in quarterly chunks**, not one long pass. Each chunk then sits well
+inside the replica timeout even if Zoom throttles, and a chunk that dies costs
+only its own slice. Chunk boundaries may overlap by a day without harm: the
+edge week is expanded to a whole week by both neighbours, and the second pass
+finds identical content and writes nothing.
+
+Both are safe to interrupt and re-run. A sealed week already delivered to every
+team folder is skipped before any Zoom call, so finished work costs nothing on a
+second pass.
+
+**The one place that is not true:** a week in which a channel had *no* messages
+produces no file, so there is nothing for the seal check to recognise and those
+days are re-fetched every run. It is bounded and cheap at the nightly's 14-day
+window (~1,200 calls against Zoom's 60,000/day), but it is why re-running a long
+historical range costs most of its original time rather than nothing.
+
+**Zoom holds no Team Chat before February 2025**, and effectively nothing before
+July 2025 — across all 54 channels and every day from 1 January to 3 August
+2025, only four weeks had any content at all. Nothing exists in 2024. Earlier
+dates only burn API calls.
+
+**Zoom holds no cloud recordings before 2025** either: 2023 and 2024 both return
+zero meetings.
+
+A transient `502` from Zoom fails one channel and the run continues to the next —
+check `failures.log` and simply re-run the same range, which retries only the
+failed channel.
 
 ---
 
@@ -493,6 +695,44 @@ skipped.
 It was not recorded, so the same command retries it. Check `failures.log` for
 individual recordings that failed permanently.
 
+**A chat channel failed with `502 <!DOCTYPE html>`**
+A transient Zoom gateway error. The run logs it and carries on to the next
+channel, so one bad channel does not lose the rest. Re-run the same range —
+every other channel-week is already sealed and present, so only the failed one
+is actually re-fetched. Seen once during the October 2026 backfill.
+
+**A chat channel cannot be found**
+
+    <name>: no such channel is visible to any active user
+
+Channels are listed per user, so a channel is only reachable while at least one
+of its members is an **active** Zoom user. If everyone in it has been
+deactivated, it drops out. Check the channel still exists and has an active
+member, then confirm the name in `_config/chat_channels.csv` matches Zoom
+exactly — matching is exact on purpose, because this tenant contains both a
+`#Brokerage` channel and an ad-hoc chat called `Brokerage`.
+
+**A chat channel resolves to an ad-hoc conversation**
+
+    <name>: this is an ad-hoc group conversation, not a channel -- skipped
+
+Zoom `type: 4` is a group DM named after its participants, not a channel. These
+are never archived. Remove the row, or give the real channel's name.
+
+**Meeting transcripts only appear once a day**
+The webhook event is not subscribed. Zoom logs every event it sends, so check
+for `recording.transcript_completed` in the webhook's console logs; if there is
+nothing, the subscription is missing (see §8a, "Still blocked"). Batch delivery
+continues meanwhile — nothing is lost, it just arrives within the day rather
+than within minutes.
+
+**`.site.json is unreadable` on startup**
+The cached site/drive id was damaged — a truncated write, or an accidental edit.
+Harmless now: the run says so, resolves the site again from `SP_SITE_HOSTNAME`
+and rewrites the cache. Before October 2026 this raised `JSONDecodeError` and
+stopped every entry point at startup, so if an older image is ever rolled back,
+delete `$STATE_DIR/.site.json` to recover.
+
 ---
 
 ## 8b. Python and dependencies
@@ -563,6 +803,18 @@ outcome: it works locally, then loses exactly one file in production.
 | `webhook.py` | Real-time receiver: verify, queue, ack in <3s, deliver |
 | `team_source.py` | Fetches and vets `teams.csv` from SharePoint |
 | `state.py` | Where derived state lives (`STATE_DIR`) |
-| `run_daily.sh` | Cron wrapper with locking and log rotation |
+| `run_daily.sh` | Cron wrapper with locking, log rotation and the stage switches |
+| `meetings.py` | Meeting transcripts to SharePoint |
+| `meeting.py` | `MeetingTranscript`, meeting layout and filenames |
+| `meeting_manifest.py` | Weekly manifests for meeting transcripts |
+| `vtt.py` | WebVTT → readable text, with speakers |
+| `zoom_meetings.py` | Cloud recordings, filtered to the TRANSCRIPT file |
+| `chat.py` (jobs) | Team Chat to SharePoint, including dual-team delivery |
+| `chat.py` (core) | `ChatMessage`, `ChannelWeek`, layout and thread rendering |
+| `chat_manifest.py` | Weekly manifests for chat records |
+| `zoom_chat.py` | Channel resolution across users, message retrieval |
+| `channel_map.py` | Channel → team(s), with the client's spellings normalised |
+| `channel_source.py` | Fetches and vets `chat_channels.csv` from SharePoint |
+| `chat_channels.csv` | Which channels to archive, and under which team(s) |
 | `requirements.txt` | Pinned dependencies; what the platform installs |
 | `RUNBOOK.md` | This file |
