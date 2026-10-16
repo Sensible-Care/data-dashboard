@@ -36,7 +36,7 @@ class MeetingTranscript(object):
 
     __slots__ = ("id", "meeting_id", "meeting_uuid", "host_id", "host_email",
                  "topic", "start_time", "duration", "file_size",
-                 "download_url", "file_extension", "raw")
+                 "download_url", "file_extension", "raw", "download_token")
 
     def __init__(self, **kwargs):
         for slot in self.__slots__:
@@ -66,6 +66,11 @@ class MeetingTranscript(object):
             download_url=recording_file.get("download_url"),
             file_extension=(recording_file.get("file_extension") or "VTT"),
             raw=recording_file,
+            # Only ever set for a transcript that arrived by webhook. Zoom's
+            # webhook download URLs refuse an OAuth token and require this
+            # short-lived one instead; the batch endpoint is the opposite.
+            # See MeetingsClient.download.
+            download_token=recording_file.get("download_token"),
         )
 
     @property

@@ -108,7 +108,8 @@ def _ensure_dirs():
             pass
 
 
-def enqueue(recording, event=None, kind="phone", meeting=None):
+def enqueue(recording, event=None, kind="phone", meeting=None,
+            download_token=None):
     """Write one recording to the queue. Returns its path, or "" if invalid.
 
     Named after the recording id, so a retried event overwrites rather than
@@ -130,6 +131,7 @@ def enqueue(recording, event=None, kind="phone", meeting=None):
                    "event": event or TRANSCRIPT_EVENT,
                    "kind": kind,
                    "meeting": meeting,
+                   "download_token": download_token or "",
                    "queued_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                time.gmtime()),
                    "attempts": 0}, fh)
@@ -208,6 +210,10 @@ def drain(zoom=None, drive=None, teams=None, directory=None, limit=None):
 
             rec = MeetingTranscript.from_api(entry.get("meeting") or {},
                                              entry.get("recording") or {})
+            # Carried separately rather than folded into the recording dict,
+            # so an entry queued before this field existed simply has none
+            # and falls through to the API lookup.
+            rec.download_token = entry.get("download_token") or None
             if not rec.download_url:
                 _give_up(path, entry, "no download_url on the transcript file")
                 failed += 1
@@ -335,11 +341,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._reply(200, {"ignored": event,
                                          "reason": "meetings disabled"})
             obj = (payload.get("payload") or {}).get("object") or {}
+            # Zoom puts the download token at the TOP level of the body,
+            # beside "payload" rather than inside it. A webhook download URL
+            # refuses our OAuth token and accepts only this one, so missing
+            # it means every meeting transcript fails with 401 errorCode 300
+            # -- which is exactly what happened between 14 and 16 October.
+            token = payload.get("download_token") or ""
             files = [f for f in (obj.get("recording_files") or [])
                      if (f.get("file_type") or "").upper() == MEETING_TRANSCRIPT_TYPE
                      and f.get("download_url")]
             accepted = [p for p in
-                        (enqueue(f, event, kind="meeting", meeting=obj)
+                        (enqueue(f, event, kind="meeting", meeting=obj,
+                                 download_token=token)
                          for f in files) if p]
             print("  queued {} meeting transcript(s)".format(len(accepted)))
             return self._reply(200, {"queued": len(accepted)})

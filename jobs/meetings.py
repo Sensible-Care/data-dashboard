@@ -102,7 +102,7 @@ def deliver(rec, zoom, drive, teams, known, extra_teams=(), rows=None):
 
     try:
         drive.ensure_folder(folder)
-        stream, _ = zoom.download(rec.download_url)
+        stream, _ = zoom.download(rec.download_url, rec)
         raw = stream.read()
         body, ext = vtt.render(raw, config.TRANSCRIPT_FORMAT, meta=[
             ("Team", team),
